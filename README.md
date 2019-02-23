@@ -1,6 +1,6 @@
 # Frontier Exploration
 
-Utility-based frontier exloration algorithm for Turtlebot 2.
+Utility-based frontier exploration algorithm for Turtlebot 2.
 
 ## Prerequisites
 
