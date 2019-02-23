@@ -1,0 +1,5 @@
+<launch>
+
+  <node name="nav_rviz" pkg="rviz" type="rviz" args="-d $(find exploration)/rviz/nav_mapping.rviz"/>
+
+</launch>

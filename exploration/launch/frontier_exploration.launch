@@ -1,0 +1,50 @@
+<launch>
+
+    <!-- 3D sensor -->
+    <arg name="3d_sensor" default="$(env TURTLEBOT_3D_SENSOR)"/>  <!-- r200, kinect, asus_xtion_pro -->
+    <include file="$(find turtlebot_bringup)/launch/3dsensor.launch">
+        <arg name="rgb_processing" value="false" />
+        <arg name="depth_registration" value="false" />
+        <arg name="depth_processing" value="false" />
+
+        <!-- We must specify an absolute topic name because if not it will be prefixed by "$(arg camera)".
+            Probably is a bug in the nodelet manager: https://github.com/ros/nodelet_core/issues/7 -->
+        <arg name="scan_topic" value="/scan" />
+    </include>
+
+    <!-- Gmapping -->
+      <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" output="screen">
+        <param name="angularUpdate" value="0.1"/>
+        <param name="linearUpdate" value="0.1"/>
+        <param name="temporalUpdate" value="5.0"/>
+        <param name="lskip" value="0.1"/>
+
+        <param name="delta" value="0.01"/>
+
+        <param name="maxURange" value="3.0"/>
+        <param name="maxRange" value="4.0"/>
+        <!-- param name="gazeboLaserRange" value="0.0"/-->
+
+        <param name="xmax" value="5.0"/>
+        <param name="xmin" value="-5.0"/>
+        <param name="ymax" value="5.0"/>
+        <param name="ymin" value="-5.0"/>
+    </node>
+
+    <!-- Run the map server with a blank map -->
+    <node name="map_server" pkg="map_server" type="map_server" args="$(find exploration)/maps/blank_map.yaml"/>
+
+    <!-- Move base -->
+    <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml">
+
+        <arg name="custom_param_file" value="$(find exploration)/param/allow_unknown.yaml"/>
+
+        <rosparam file="$(find exploration)/param/costmap_common_params.yaml" command="load" ns="global_costmap"/>
+        <rosparam file="$(find exploration)/param/costmap_common_params.yaml" command="load" ns="local_costmap"/>
+        <rosparam file="$(find exploration)/param/local_costmap_params.yaml" command="load"/>
+        <rosparam file="$(find exploration)/param/global_costmap_params.yaml" command="load"/>
+        <rosparam file="$(find exploration)/param/base_local_planner_params.yaml" command="load"/>
+
+    </include>
+
+</launch>

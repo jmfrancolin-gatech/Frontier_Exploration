@@ -1,0 +1,32 @@
+<launch>
+
+    <!-- Gazebo -->
+
+    <!-- Gmapping -->
+    <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" output="screen">
+
+        <remap from="/scan" to="/filter_scan"/>
+
+        <param name="angularUpdate" value="0.1"/>
+        <param name="linearUpdate" value="0.1"/>
+        <param name="temporalUpdate" value="5.0"/>
+
+        <param name="lskip" value="0.1"/>
+        <param name="delta" value="0.001"/>
+
+        <param name="maxURange" value="3.0"/>
+        <param name="maxRange" value="4.0"/>
+        <param name="gazeboLaserRange" value="3.0"/>
+
+        <param name="xmax" value="10.0"/>
+        <param name="xmin" value="-10.0"/>
+        <param name="ymax" value="10.0"/>
+        <param name="ymin" value="-10.0"/>
+
+    </node>
+
+
+    <!-- Move base -->
+    <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml"/>
+
+</launch>

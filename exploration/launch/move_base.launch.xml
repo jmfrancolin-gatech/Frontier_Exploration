@@ -1,0 +1,10 @@
+<launch>
+
+  <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml">
+    <arg name="custom_param_file" value="$(find nav_demos)/param/allow_unknown.yaml"/>
+
+    <rosparam file="$(find nav_demos)/param/costmap_common_params.yaml" command="load" ns="global_costmap"/>
+
+  </include>
+
+</launch>
