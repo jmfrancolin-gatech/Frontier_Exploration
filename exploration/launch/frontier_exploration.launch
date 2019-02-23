@@ -1,5 +1,8 @@
 <launch>
 
+    <!-- Turtlebot bringup -->
+    <include file="$(find turtlebot_bringup)/launch/minimal.launch"/>
+
     <!-- 3D sensor -->
     <arg name="3d_sensor" default="$(env TURTLEBOT_3D_SENSOR)"/>  <!-- r200, kinect, asus_xtion_pro -->
     <include file="$(find turtlebot_bringup)/launch/3dsensor.launch">
@@ -46,5 +49,8 @@
         <rosparam file="$(find exploration)/param/base_local_planner_params.yaml" command="load"/>
 
     </include>
+
+    <!-- Rviz -->
+    <node name="nav_rviz" pkg="rviz" type="rviz" args="-d $(find exploration)/rviz/nav_mapping.rviz"/>
 
 </launch>
