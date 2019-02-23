@@ -11,8 +11,6 @@ Utility-based frontier exploration algorithm for Turtlebot 2.
 ## Running
 
 ```
-roslaunch turtlebot_bringup minimal.launch
 roslaunch exploration frontier_exploration.launch
-roslaunch exploration rviz.launch
 rosrun exploration explore.py
 ```
