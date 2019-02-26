@@ -28,6 +28,7 @@ def get_candidates():
     global map_raw
     global map_origin
     global map_resolution
+    global cluster_trashhole
 
     # save current occupancy grid for reliable computations
     saved_map = map_raw
@@ -61,7 +62,7 @@ def get_candidates():
     frontier = [x for x in frontier]
 
     # group frontier points into clusters based on distance
-    frontier = groupTPL(frontier, 0.02)
+    frontier = groupTPL(frontier, cluster_trashhole)
 
     # make list of np arrays of clustered frontier points
     candidates = []
@@ -72,6 +73,11 @@ def get_candidates():
     return candidates
 
 def groupTPL(TPL, distance=1):
+
+    # TO-DO:
+    # Rethink ways to cluster points
+    # K-d tree may be an alternative
+    # Currently algorithm runs on O(n^2)
 
     print 'Inside groupTPL()\n'
 
@@ -119,6 +125,9 @@ def compute_centroids(list_of_arrays):
 
 def utility_function(centroids):
 
+    # TO-DO:
+    # Check if current_position for tf listener is also inverted
+
     print 'Inside utility_function()\n'
 
     # chosen utility function : length / distance
@@ -136,9 +145,8 @@ def utility_function(centroids):
     for index in range(len(centroids)):
 
         # compute manhattan distance
-        # x and y are inverted
-        man_dist = abs(current_position[1] - centroids[index][0])\
-                 + abs(current_position[0] - centroids[index][1])
+        man_dist = abs(current_position[0] - centroids[index][0])\
+                 + abs(current_position[1] - centroids[index][1])
 
         # compute length / distance
         utility = centroids[index][2] / man_dist
@@ -146,7 +154,7 @@ def utility_function(centroids):
         # substitute length atribute with utility of point
         utility_array[index][2] = utility
 
-    # \sort utility_array based on utility
+    # sort utility_array based on utility
     index = np.argsort(utility_array[:, 2])
     utility_array[:] = utility_array[index]
 
@@ -180,7 +188,7 @@ def rviz_and_graph(candidates, centroids, goal):
         plt.plot(goal[1], goal[0], 'gX')
 
         plt.grid(True)
-        plt.savefig('graph_' + str(rviz_id / 500) + '.png')
+        plt.savefig('graph_' + str(rviz_id / 100) + '.png')
 
 
     color = ColorRGBA()
@@ -319,6 +327,7 @@ def create_goal_message(x_target, y_target, theta_target, frame = '/map'):
     goal.target_pose.pose.orientation.y = quat[1]
     goal.target_pose.pose.orientation.z = quat[2]
     goal.target_pose.pose.orientation.w = quat[3]
+
     return goal
 
 def output_to_rviz(array, scale, color):
@@ -394,6 +403,8 @@ start_flag = True
 
 # initialyze counter to give a unique id for rviz features
 rviz_id = 0
+# parameters dependent on map_resolution & necessary to cluster points
+cluster_trashhole = 0.02
 
 
 while not rospy.is_shutdown():
