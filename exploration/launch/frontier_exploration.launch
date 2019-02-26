@@ -19,7 +19,7 @@
       <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" output="screen">
         <param name="angularUpdate" value="0.1"/>
         <param name="linearUpdate" value="0.1"/>
-        <param name="temporalUpdate" value="5.0"/>
+        <!--param name="temporalUpdate" value="5.0"/-->
         <param name="lskip" value="0.1"/>
 
         <param name="delta" value="0.01"/>
