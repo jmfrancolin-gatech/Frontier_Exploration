@@ -16,9 +16,9 @@ from actionlib_msgs.msg import GoalStatus
 from visualization_msgs.msg import Marker, MarkerArray
 from tf.transformations import quaternion_from_euler
 
-# from geometry_msgs.msg import Pose, Point
+from geometry_msgs.msg import Pose, Point
 # from geometry_msgs.msg import Quaternion, Pose, Point, Vector3
-# from std_msgs.msg import Header, ColorRGBA
+from std_msgs.msg import Header, ColorRGBA
 
 
 def get_candidates():
@@ -66,19 +66,7 @@ def get_candidates():
     for i in range(len(frontier)):
         candidates.append(np.array(frontier[i]))
 
-    # # plot contours & frontiers
-    # fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(10, 5))
-
-    # ax1.plot(contours_negative[:, 1], contours_negative[:, 0], 'bo')
-    # ax1.plot(contours_positive[:, 1], contours_positive[:, 0], 'rx')
-
-    # for i in range(len(candidates)):
-    #     ax2.plot(candidates[i][:, 1], candidates[i][:, 0], 'o')
-
-    # plt.grid(True)
-    # plt.savefig("contours_&_frontiers.png")
-    # plt.show()
-
+    # return candidates as np array of np arays
     return candidates
 
 def groupTPL(TPL, distance=1):
@@ -135,7 +123,7 @@ def utility_function(centroids):
     utility_array = np.copy(centroids)
 
     # compute current position on the map
-    current_position, current_quaternion = get_current_pose('map', 'odom')
+    current_position, current_quaternion = get_current_pose('/map', '/odom')
 
     for index in range(len(centroids)):
 
@@ -156,23 +144,56 @@ def utility_function(centroids):
     # reverse utility_array to have greatest utility as index 0
     utility_array = utility_array[::-1]
 
-    # define x and y goal
-    x_goal = utility_array[0][0]
-    y_goal = utility_array[0][1]
+    # define goal [x, y]
+    goal = np.array([utility_array[0][0], utility_array[0][1]])
 
-    return x_goal, y_goal
+    # return goal as np array
+    return goal
 
-def graph_centroids(centroids, candidates):
+def rviz_and_graph(candidates, centroids, goal):
+
+    global rviz_id
+
+    # print out graph
+    if rviz_id % 500 == 0:
+
+        for i in range(len(candidates)):
+            plt.plot(candidates[i][:, 1], candidates[i][:, 0], '.')
+
+        plt.plot(centroids[:, 1], centroids[:, 0], 'ro')
+        plt.plot(goal[1], goal[0], 'gX')
+
+        plt.grid(True)
+        plt.savefig('graph_' + str(rviz_id / 500) + '.png')
 
 
-    for i in range(len(candidates)):
-        plt.plot(candidates[i][:, 1], candidates[i][:, 0], 'o')
+    color = ColorRGBA()
 
-    plt.plot(centroids[:, 1], centroids[:, 0], 'X')
+    # # candidates
+    # scale needs [x, y, z] atributes
+    scale = Point(map_resolution * 2, map_resolution * 2, map_resolution * 2)
+    # color nneds [r, g, b, a] atributes
+    color = ColorRGBA(0.0, 0.0, 1.0, 0.50)
+    # concatenate candidates because output_to_rviz recives a single array
+    candidates = np.concatenate(candidates)
+    # publish to rviz
+    output_to_rviz(candidates, scale, color)
 
-    plt.grid(True)
-    plt.savefig("contours_&_frontiers.png")
-    plt.show()
+    # centroids
+    # scale needs [x, y, z] atributes
+    scale = Point(map_resolution * 3, map_resolution * 3, map_resolution * 3)
+    # color nneds [r, g, b, a] atributes
+    color = ColorRGBA(1.0, 1.0, 0.0, 0.75)
+    # publish to rviz
+    output_to_rviz(centroids, scale, color)
+
+    # goal
+    # scale needs [x, y, z] atributes
+    scale = Point(map_resolution * 4, map_resolution * 4, map_resolution * 4)
+    # color nneds [r, g, b, a] atributes
+    color = ColorRGBA(0.0, 1.0, 0.0, 1.0)
+    # publish to rviz
+    output_to_rviz([goal], scale, color)
 
 
 def get_current_pose(target_frame, source_frame):
@@ -209,7 +230,7 @@ def callback_map(OccupancyGrid):
     start_flag = True
 
     # gice time to update the OccupancyGrid
-    rospy.sleep(5)
+    rospy.sleep(1)
 
 
 def go_to_point(x_target, y_target, theta_target = 0):
@@ -260,35 +281,33 @@ def create_goal_message(x_target, y_target, theta_target, frame = '/map'):
     goal.target_pose.pose.orientation.w = quat[3]
     return goal
 
-def output_to_rviz(candidates):
+def output_to_rviz(array, scale, color):
 
     global publisher
+    global rviz_id
 
+    # make MarkerArray message
     markerArray = MarkerArray()
 
-    for i in range(len(candidates)):
-
+    # loop throgh all instances of the array
+    for index in range(len(array)):
         marker = Marker()
-        marker.id = i + 1
+        marker.id = rviz_id
         marker.header.frame_id = "/map"
         marker.type = marker.SPHERE
         marker.action = marker.ADD
-        marker.lifetime = rospy.Duration(10.0)
-        marker.scale.x = 0.1
-        marker.scale.y = 0.1
-        marker.scale.z = 0.1
-        marker.color.a = 1.0
-        marker.color.r = 1.0
-        marker.color.g = 1.0
-        marker.color.b = 0.0
-
-        marker.pose.position.x = candidates[i][1]
-        marker.pose.position.y = candidates[i][0]
+        marker.lifetime = rospy.Duration(5.0)
+        marker.scale = scale
+        marker.color = color
+        # x and y are inverted due to nature of the map
+        marker.pose.position.x = array[index][1]
+        marker.pose.position.y = array[index][0]
         markerArray.markers.append(marker)
+        # incremment rviz_id
+        rviz_id = rviz_id + 1
 
     # Publish the MarkerArray
     publisher.publish(markerArray)
-    rospy.sleep(1)
 
 def shutdown():
     # stop turtlebot
@@ -327,22 +346,18 @@ rospy.on_shutdown(shutdown)
 # set start flag to false -- wait until map is published
 start_flag = False
 
+# initialyze counter to give a unique id for rviz features
+rviz_id = 0
+
+
 while not rospy.is_shutdown():
     if start_flag:
-        # # get initial position
-        # init_position, init_quaternion = tflistener.lookupTransform('/odom', '/map', rospy.Time(0))
-
-        # run algorithm
-
-
 
         candidates = get_candidates()
         centroids = compute_centroids(candidates)
-        x_goal, y_goal = utility_function(centroids)
-        go_to_point(y_goal, x_goal)
-
-
+        goal = utility_function(centroids)
+        rviz_and_graph(candidates, centroids, goal)
+        # x and y are inverted due to confliction frames
+        # of recerence from Occupancy grid & /map
+        go_to_point(goal[1], goal[0])
         rospy.sleep(1)
-
-
-
