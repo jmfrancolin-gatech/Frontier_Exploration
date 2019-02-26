@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import sys
 import rospy
 import actionlib
 import tf
@@ -8,13 +7,16 @@ import math
 import numpy as np
 import sys
 
+import union_find
+
 from move_base_msgs.msg import MoveBaseGoal, MoveBaseAction
 from nav_msgs.msg import OccupancyGrid, Odometry
 from geometry_msgs.msg import Pose, Point
 from actionlib_msgs.msg import GoalStatus
 
-from skimage.measure import find_contours, approximate_polygon, subdivide_polygon
+from skimage.measure import find_contours
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
@@ -30,46 +32,62 @@ def get_frontier_candidates():
     global map_origin
     global map_resolution
 
+    # save current occupancy grid for reliable computations
     saved_map = map_raw
 
-
+    # compute contours
     contours_negative = find_contours(saved_map, -1.0, fully_connected='high')
     contours_positive = find_contours(saved_map,  1.0, fully_connected='high')
 
-
+    # translate contours to map frame
     contours_negative = np.concatenate(contours_negative, axis = 0)
     for index in range(len(contours_negative)):
         contours_negative[index][0] = round(contours_negative[index][0] * map_resolution + map_origin[0], 2)
         contours_negative[index][1] = round(contours_negative[index][1] * map_resolution + map_origin[1], 2)
 
-    # contours_negative = np.unique(contours_negative, axis = 0)
-    # output_to_rviz(contours_negative)
-
-
-
+    # translate contours to map frame
     contours_positive = np.concatenate(contours_positive, axis = 0)
     for index in range(len(contours_positive)):
         contours_positive[index][0] = round(contours_positive[index][0] * map_resolution + map_origin[0], 2)
         contours_positive[index][1] = round(contours_positive[index][1] * map_resolution + map_origin[1], 2)
 
-    # contours_positive = np.unique(contours_positive, axis = 0)
-    # output_to_rviz(contours_positive)
-
-
-
-
-
+    # convert contour np arrays into sets
     set_negative = set([tuple(x) for x in contours_negative])
     set_positive = set([tuple(x) for x in contours_positive])
 
-
-
+    # perform set difference operation to find frontiers
     frontier = set_negative.difference(set_positive)
 
-    frontier = np.array([list(x) for x in frontier])
-    print frontier
+    # convert set of frotiers into a list (hasable type data structre)
+    frontier = [x for x in frontier]
+
+    # group frontier points into clusters based on distance
+    frontier = groupTPL(frontier, 0.02)
+
+    # print len(frontier)
+    # print frontier
 
 
+
+
+    candidates = []
+    for i in range(len(frontier)):
+        candidates.append(np.array(frontier[i]))
+
+    # print len(candidates)
+    # print candidates
+
+
+    # convert list of tuples into list of lists
+    # for i in range(len(candidates)):
+    #     for j in range(len(candidates[i])):
+    #         candidates[i][j] = list(candidates[i][j])
+
+    # print candidates
+
+    # print contours_negative
+    # print '\n'
+    # print contours_negative[:, 1]
 
 
 
@@ -80,13 +98,33 @@ def get_frontier_candidates():
     ax1.plot(contours_negative[:, 1], contours_negative[:, 0], 'bo')
     ax1.plot(contours_positive[:, 1], contours_positive[:, 0], 'rx')
 
-    ax2.plot(frontier[:, 1], frontier[:, 0], 'go')
+
+    for i in range(len(candidates)):
+        ax2.plot(candidates[i][:, 1], candidates[i][:, 0], 'o')
 
 
 
     plt.grid(True)
     plt.savefig("test.png")
     plt.show()
+
+def groupTPL(TPL, distance=1):
+
+    U = union_find.UnionFind()
+
+    for (i, x) in enumerate(TPL):
+        for j in range(i + 1, len(TPL)):
+            y = TPL[j]
+            if max(abs(x[0] - y[0]), abs(x[1] - y[1])) <= distance:
+                U.union(x, y)
+
+    disjSets = {}
+    for x in TPL:
+        s = disjSets.get(U[x], set())
+        s.add(x)
+        disjSets[U[x]] = s
+
+    return [list(x) for x in disjSets.values()]
 
 
 def translate_to_map(frontiers_candidates_map):
@@ -197,8 +235,7 @@ def callback_map(OccupancyGrid):
     map_raw = np.array(data)
     map_raw = map_raw.reshape(info.height, info.width)
 
-    out_name = 'catkin_ws/src/Frontier_Exploration/exploration/maps/map_raw.txt'
-    np.savetxt(out_name, map_raw, fmt = '%f');
+    np.savetxt('map_raw.txt', map_raw, fmt = '%d');
 
     # get initial position
     map_origin = np.array([info.origin.position.x, info.origin.position.y, info.origin.position.z])
@@ -342,6 +379,7 @@ rospy.on_shutdown(shutdown)
 # set start flag to false -- wait until map is published
 start_flag = False
 
+
 while not rospy.is_shutdown():
     if start_flag:
         # # get initial position
@@ -358,3 +396,6 @@ while not rospy.is_shutdown():
         # output_to_rviz(marker_publisher, goal)
 
         rospy.sleep(1)
+
+
+
