@@ -5,28 +5,23 @@ import actionlib
 import tf
 import math
 import numpy as np
-import sys
-
 import union_find
-
-from move_base_msgs.msg import MoveBaseGoal, MoveBaseAction
-from nav_msgs.msg import OccupancyGrid, Odometry
-from geometry_msgs.msg import Pose, Point
-from actionlib_msgs.msg import GoalStatus
-
-from skimage.measure import find_contours
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-from visualization_msgs.msg import Marker
-from visualization_msgs.msg import MarkerArray
+from skimage.measure import find_contours
+from move_base_msgs.msg import MoveBaseGoal, MoveBaseAction
+from nav_msgs.msg import OccupancyGrid, Odometry
+from actionlib_msgs.msg import GoalStatus
+from visualization_msgs.msg import Marker, MarkerArray
+from tf.transformations import quaternion_from_euler
 
-from geometry_msgs.msg import Quaternion, Pose, Point, Vector3
-from std_msgs.msg import Header, ColorRGBA
-from tf.transformations import euler_from_quaternion, quaternion_from_euler
+# from geometry_msgs.msg import Pose, Point
+# from geometry_msgs.msg import Quaternion, Pose, Point, Vector3
+# from std_msgs.msg import Header, ColorRGBA
 
 
-def get_frontier_candidates():
+def get_candidates():
 
     global map_raw
     global map_origin
@@ -40,13 +35,15 @@ def get_frontier_candidates():
     contours_positive = find_contours(saved_map,  1.0, fully_connected='high')
 
     # translate contours to map frame
-    contours_negative = np.concatenate(contours_negative, axis = 0)
+    contours_negative = np.concatenate(contours_negative, axis=0)
     for index in range(len(contours_negative)):
-        contours_negative[index][0] = round(contours_negative[index][0] * map_resolution + map_origin[0], 2)
-        contours_negative[index][1] = round(contours_negative[index][1] * map_resolution + map_origin[1], 2)
+        contours_negative[index][0] = round(contours_negative[index][0]\
+                                    * map_resolution + map_origin[0], 2)
+        contours_negative[index][1] = round(contours_negative[index][1]\
+                                    * map_resolution + map_origin[1], 2)
 
     # translate contours to map frame
-    contours_positive = np.concatenate(contours_positive, axis = 0)
+    contours_positive = np.concatenate(contours_positive, axis=0)
     for index in range(len(contours_positive)):
         contours_positive[index][0] = round(contours_positive[index][0] * map_resolution + map_origin[0], 2)
         contours_positive[index][1] = round(contours_positive[index][1] * map_resolution + map_origin[1], 2)
@@ -64,49 +61,25 @@ def get_frontier_candidates():
     # group frontier points into clusters based on distance
     frontier = groupTPL(frontier, 0.02)
 
-    # print len(frontier)
-    # print frontier
-
-
-
-
+    # make list of np arrays of clustered frontier points
     candidates = []
     for i in range(len(frontier)):
         candidates.append(np.array(frontier[i]))
 
-    # print len(candidates)
-    # print candidates
+    # # plot contours & frontiers
+    # fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(10, 5))
 
+    # ax1.plot(contours_negative[:, 1], contours_negative[:, 0], 'bo')
+    # ax1.plot(contours_positive[:, 1], contours_positive[:, 0], 'rx')
 
-    # convert list of tuples into list of lists
     # for i in range(len(candidates)):
-    #     for j in range(len(candidates[i])):
-    #         candidates[i][j] = list(candidates[i][j])
+    #     ax2.plot(candidates[i][:, 1], candidates[i][:, 0], 'o')
 
-    # print candidates
+    # plt.grid(True)
+    # plt.savefig("contours_&_frontiers.png")
+    # plt.show()
 
-    # print contours_negative
-    # print '\n'
-    # print contours_negative[:, 1]
-
-
-
-    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(10, 5))
-
-
-
-    ax1.plot(contours_negative[:, 1], contours_negative[:, 0], 'bo')
-    ax1.plot(contours_positive[:, 1], contours_positive[:, 0], 'rx')
-
-
-    for i in range(len(candidates)):
-        ax2.plot(candidates[i][:, 1], candidates[i][:, 0], 'o')
-
-
-
-    plt.grid(True)
-    plt.savefig("test.png")
-    plt.show()
+    return candidates
 
 def groupTPL(TPL, distance=1):
 
@@ -126,91 +99,80 @@ def groupTPL(TPL, distance=1):
 
     return [list(x) for x in disjSets.values()]
 
+def compute_centroids(list_of_arrays):
 
-def translate_to_map(frontiers_candidates_map):
-
-    global map_raw
-    global map_origin
     global map_resolution
 
+    centroids = []
+    for index in range(len(list_of_arrays)):
+        # compute num of elements in the array
+        length = list_of_arrays[index].shape[0]
+        # compute real world length of frontier in cm
+        real_length = np.round(length * map_resolution * 100)
+        # compute x coordanate of centroid
+        sum_x = np.sum(list_of_arrays[index][:, 0])
+        x = np.round(sum_x / length, 2)
+        # compute y coodenate of centroid
+        sum_y = np.sum(list_of_arrays[index][:, 1])
+        y = np.round(sum_y / length, 2)
+        # append coordanate in the form [x, y, real_length]
+        centroids.append([x, y, real_length])
 
-    # get current pose om /odom frame
-    # current_position, current_quaternion = get_current_pose('/map', '/odom')
-    # current_x = current_position[0]
-    # current_y = current_position[1]
-    # print 'current_x = ' + str(current_x) + ' current_y = ' + str(current_y) + '\n'
+    # convert list of centroids into np array
+    centroids = np.array(centroids)
+    # return centroids as np array
+    return centroids
 
+def utility_function(centroids):
 
-    # current_position, current_quaternion = get_current_pose('/map', '/map')
-    # print '/map to /map'
-    # print current_position
+    # chosen utility function : length / distance
 
-    # current_position, current_quaternion = get_current_pose('/odom', '/odom')
-    # print '/odom to /odom'
-    # print current_position
+    # pre allocate utility_array
+    utility_array = np.zeros((centroids.shape[0], centroids.shape[1]))
 
-    # current_position, current_quaternion = get_current_pose('/map', '/odom')
-    # print '/map to /odom'
-    # print current_position
+    # make a copy of centroids and use for loop to
+    # substitute length atribute with utility of point
+    utility_array = np.copy(centroids)
 
-    # current_position, current_quaternion = get_current_pose('/odom', '/map')
-    # print '/odom to /map'
-    # print current_position
+    # compute current position on the map
+    current_position, current_quaternion = get_current_pose('map', 'odom')
 
-    # print '\n'
+    for index in range(len(centroids)):
 
-    # go_to_point(0.5, 0.0)
+        # compute manhattan distance
+        man_dist = abs(current_position[0] - centroids[index][0])\
+                 + abs(current_position[1] - centroids[index][1])
 
+        # compute length / distance
+        utility = centroids[index][2] / man_dist
 
+        # substitute length atribute with utility of point
+        utility_array[index][2] = utility
 
-    # initialyze frontier candidate list
-    frontiers_candidates_odom = []
+    # sort utility_array based on utility
+    index = np.argsort(utility_array[:, 2])
+    utility_array[:] = utility_array[index]
 
-    for ele in frontiers_candidates_map:
+    # reverse utility_array to have greatest utility as index 0
+    utility_array = utility_array[::-1]
 
-        # initialyze coodinate structure
-        # coordinate = [x, y, length(m), dist(m)]
-        coordinate = [np.nan, np.nan]
+    # define x and y goal
+    x_goal = utility_array[0][0]
+    y_goal = utility_array[0][1]
 
-        # compute x and y
-        coordinate[0] = ele[0] * map_resolution + map_origin[0]
-        coordinate[1] = ele[1] * map_resolution + map_origin[1]
+    return x_goal, y_goal
 
-        # compute legth in m
-        # coordinate[2] = ele[2] * map_resolution
-
-        # compute distance in m
-        # manhattan_dist = abs(coordinate[0] - map_origin[0]) + abs(coordinate[1] - map_origin[1])
-        # coordinate[3] = manhattan_dist
-
-        # for i in range(len(coordinate) - 1):
-        #     coordinate[i] = int(coordinate[i])
-        # print coordinate
-        # print '\n'
-
-        # append data
-        frontiers_candidates_odom.append(coordinate)
-
-    # frontiers_candidates_odom = np.unique(frontiers_candidates_odom, axis = 0)
-    # frontiers_candidates_odom = filter(lambda x: x[2] > 1.0 and x[3] > 1.0, frontiers_candidates_odom)
-
-    # print frontiers_candidates_odom
-    # print '\n'
-
-    # goal = Point(frontiers_candidates_odom[0][0], frontiers_candidates_odom[0][1], 0.0)
-
-    return frontiers_candidates_odom
-
-    # apply utility function
+def graph_centroids(centroids, candidates):
 
 
+    for i in range(len(candidates)):
+        plt.plot(candidates[i][:, 1], candidates[i][:, 0], 'o')
 
-def compute_centroid(array):
+    plt.plot(centroids[:, 1], centroids[:, 0], 'X')
 
-    length = array.shape[0]
-    sum_x = np.sum(array[:, 0])
-    sum_y = np.sum(array[:, 1])
-    return sum_x / length, sum_y / length, length
+    plt.grid(True)
+    plt.savefig("contours_&_frontiers.png")
+    plt.show()
 
 
 def get_current_pose(target_frame, source_frame):
@@ -245,6 +207,9 @@ def callback_map(OccupancyGrid):
 
     # set start_flag to true
     start_flag = True
+
+    # gice time to update the OccupancyGrid
+    rospy.sleep(5)
 
 
 def go_to_point(x_target, y_target, theta_target = 0):
@@ -301,24 +266,6 @@ def output_to_rviz(candidates):
 
     markerArray = MarkerArray()
 
-    # # mark map origin
-    # origin_marker = Marker()
-    # origin_marker.id = 0
-    # origin_marker.header.frame_id = "/map"
-    # origin_marker.type = origin_marker.SPHERE
-    # origin_marker.action = origin_marker.ADD
-    # origin_marker.lifetime = rospy.Duration(10.0)
-    # origin_marker.scale.x = 0.2
-    # origin_marker.scale.y = 0.2
-    # origin_marker.scale.z = 0.2
-    # origin_marker.color.a = 1.0
-    # origin_marker.color.r = 0.0
-    # origin_marker.color.g = 0.0
-    # origin_marker.color.b = 1.0
-    # origin_marker.pose.position.x = 0.0
-    # origin_marker.pose.position.y = 1.0
-    # markerArray.markers.append(origin_marker)
-
     for i in range(len(candidates)):
 
         marker = Marker()
@@ -343,15 +290,16 @@ def output_to_rviz(candidates):
     publisher.publish(markerArray)
     rospy.sleep(1)
 
-
 def shutdown():
     # stop turtlebot
     rospy.loginfo("Stop TurtleBot")
     rospy.sleep(1)
 
 
-
 ## Main ########################################################################
+
+# set priting options
+np.set_printoptions(suppress=True)
 
 # initialyze node
 rospy.init_node('nav_node')
@@ -379,7 +327,6 @@ rospy.on_shutdown(shutdown)
 # set start flag to false -- wait until map is published
 start_flag = False
 
-
 while not rospy.is_shutdown():
     if start_flag:
         # # get initial position
@@ -389,11 +336,11 @@ while not rospy.is_shutdown():
 
 
 
-        get_frontier_candidates()
+        candidates = get_candidates()
+        centroids = compute_centroids(candidates)
+        x_goal, y_goal = utility_function(centroids)
+        go_to_point(y_goal, x_goal)
 
-        # frontiers_candidates_map = get_frontier_candidates()
-        # goal = select_frontier(frontiers_candidates_map)
-        # output_to_rviz(marker_publisher, goal)
 
         rospy.sleep(1)
 
