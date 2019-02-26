@@ -12,14 +12,15 @@ from move_base_msgs.msg import MoveBaseGoal, MoveBaseAction
 from nav_msgs.msg import OccupancyGrid, Odometry
 from geometry_msgs.msg import Pose, Point
 from actionlib_msgs.msg import GoalStatus
-from skimage import measure
+
+from skimage.measure import find_contours, approximate_polygon, subdivide_polygon
+import matplotlib.pyplot as plt
 
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 
 from geometry_msgs.msg import Quaternion, Pose, Point, Vector3
 from std_msgs.msg import Header, ColorRGBA
-
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 
@@ -29,65 +30,66 @@ def get_frontier_candidates():
     global map_origin
     global map_resolution
 
-    # contours_unknown_cells = contours_populated_cell + contours_oppen_cells
-    contours_unknown_cells = measure.find_contours(map_raw, -0.5)
-    print contours_unknown_cells
-    print '\n'
+    saved_map = map_raw
 
 
-    # get centroids
-    centroids_unknown_cells = []
-    for i in range(len(contours_unknown_cells)):
-        centroids_unknown_cells.append(compute_centroid(contours_unknown_cells[i]))
-    # make into a set
-    centroids_unknown_cells = set(centroids_unknown_cells)
-    print centroids_unknown_cells
-    print '\n'
+    contours_negative = find_contours(saved_map, -1.0, fully_connected='high')
+    contours_positive = find_contours(saved_map,  1.0, fully_connected='high')
 
 
-    candidates = select_frontier(centroids_unknown_cells)
-    print candidates
-    print '\n'
+    contours_negative = np.concatenate(contours_negative, axis = 0)
+    for index in range(len(contours_negative)):
+        contours_negative[index][0] = round(contours_negative[index][0] * map_resolution + map_origin[0], 2)
+        contours_negative[index][1] = round(contours_negative[index][1] * map_resolution + map_origin[1], 2)
+
+    # contours_negative = np.unique(contours_negative, axis = 0)
+    # output_to_rviz(contours_negative)
 
 
 
-    show_text_in_rviz(candidates)
+    contours_positive = np.concatenate(contours_positive, axis = 0)
+    for index in range(len(contours_positive)):
+        contours_positive[index][0] = round(contours_positive[index][0] * map_resolution + map_origin[0], 2)
+        contours_positive[index][1] = round(contours_positive[index][1] * map_resolution + map_origin[1], 2)
+
+    # contours_positive = np.unique(contours_positive, axis = 0)
+    # output_to_rviz(contours_positive)
 
 
-    x_target = candidates[0][0]
-    y_target = candidates[0][1]
-    theta_target = 0
-
-    go_to_point(y_target, x_target, theta_target)
 
 
-    # # contours_populated_cells
-    # contours_populated_cells = measure.find_contours(map_raw, 0.5)
 
-    # # get centroids
-    # centroids_unknown_cells = []
-    # for i in range(len(contours_unknown_cells)):
-    #     centroids_unknown_cells.append(compute_centroid(contours_unknown_cells[i]))
-    # # make into a set
-    # centroids_unknown_cells = set(centroids_unknown_cells)
+    set_negative = set([tuple(x) for x in contours_negative])
+    set_positive = set([tuple(x) for x in contours_positive])
 
-    # # get centroids
-    # centroids_populated_cells = []
-    # for i in range(len(contours_populated_cells)):
-    #     centroids_populated_cells.append(compute_centroid(contours_populated_cells[i]))
-    # # make into a set
-    # centroids_populated_cells = set(centroids_populated_cells)
 
-    # # get candidate_frontiers
-    # frontiers_candidates_map = centroids_unknown_cells.difference(centroids_populated_cells)
 
-    # # if len(frontiers_candidates_map) == 0:
-    # #     go_to_point(0.5, 0.0)
-    # #     get_frontier_centroid()
+    frontier = set_negative.difference(set_positive)
 
-    # return frontiers_candidates_map
+    frontier = np.array([list(x) for x in frontier])
+    print frontier
 
-def select_frontier(frontiers_candidates_map):
+
+
+
+
+    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(10, 5))
+
+
+
+    ax1.plot(contours_negative[:, 1], contours_negative[:, 0], 'bo')
+    ax1.plot(contours_positive[:, 1], contours_positive[:, 0], 'rx')
+
+    ax2.plot(frontier[:, 1], frontier[:, 0], 'go')
+
+
+
+    plt.grid(True)
+    plt.savefig("test.png")
+    plt.show()
+
+
+def translate_to_map(frontiers_candidates_map):
 
     global map_raw
     global map_origin
@@ -130,18 +132,18 @@ def select_frontier(frontiers_candidates_map):
 
         # initialyze coodinate structure
         # coordinate = [x, y, length(m), dist(m)]
-        coordinate = [np.nan, np.nan, np.nan, np.nan]
+        coordinate = [np.nan, np.nan]
 
         # compute x and y
         coordinate[0] = ele[0] * map_resolution + map_origin[0]
         coordinate[1] = ele[1] * map_resolution + map_origin[1]
 
         # compute legth in m
-        coordinate[2] = ele[2] * map_resolution
+        # coordinate[2] = ele[2] * map_resolution
 
         # compute distance in m
-        manhattan_dist = abs(coordinate[0] - map_origin[0]) + abs(coordinate[1] - map_origin[1])
-        coordinate[3] = manhattan_dist
+        # manhattan_dist = abs(coordinate[0] - map_origin[0]) + abs(coordinate[1] - map_origin[1])
+        # coordinate[3] = manhattan_dist
 
         # for i in range(len(coordinate) - 1):
         #     coordinate[i] = int(coordinate[i])
@@ -150,7 +152,6 @@ def select_frontier(frontiers_candidates_map):
 
         # append data
         frontiers_candidates_odom.append(coordinate)
-#
 
     # frontiers_candidates_odom = np.unique(frontiers_candidates_odom, axis = 0)
     # frontiers_candidates_odom = filter(lambda x: x[2] > 1.0 and x[3] > 1.0, frontiers_candidates_odom)
@@ -171,7 +172,7 @@ def compute_centroid(array):
     length = array.shape[0]
     sum_x = np.sum(array[:, 0])
     sum_y = np.sum(array[:, 1])
-    return (int) (sum_x / length), (int) (sum_y / length), (int) (length)
+    return sum_x / length, sum_y / length, length
 
 
 def get_current_pose(target_frame, source_frame):
@@ -192,12 +193,12 @@ def callback_map(OccupancyGrid):
     info = OccupancyGrid.info
     data = OccupancyGrid.data
 
-    # print info
-
     # make numpy array from OccupancyGrid
     map_raw = np.array(data)
     map_raw = map_raw.reshape(info.height, info.width)
-    np.savetxt("map_raw.txt", map_raw, fmt = '%d');
+
+    out_name = 'catkin_ws/src/Frontier_Exploration/exploration/maps/map_raw.txt'
+    np.savetxt(out_name, map_raw, fmt = '%f');
 
     # get initial position
     map_origin = np.array([info.origin.position.x, info.origin.position.y, info.origin.position.z])
@@ -224,7 +225,7 @@ def go_to_point(x_target, y_target, theta_target = 0):
     rospy.loginfo("Goal Sent.")
 
     # Check in after a while to see how things are going.
-    rospy.sleep(1.0)
+    rospy.sleep(1)
     rospy.loginfo("Status Text: {}".format(action.get_goal_status_text()))
 
     # Should be either "ACTIVE", "SUCCEEDED" or "ABORTED"
@@ -257,44 +258,41 @@ def create_goal_message(x_target, y_target, theta_target, frame = '/map'):
     goal.target_pose.pose.orientation.w = quat[3]
     return goal
 
-def show_text_in_rviz(candidates):
+def output_to_rviz(candidates):
 
     global publisher
 
-    # for i in range(len(list_pose)):
-
-    # marker = Marker(
-    #             type = 7,
-    #             id = 0,
-    #             lifetime=rospy.Duration(1.5),
-    #             pose = list_pose,
-    #             scale = Vector3(1.1, 1.1, 1.1),
-    #             header = Header(frame_id = '/map'),
-    #             color = ColorRGBA(0.0, 0.0, 1.0, 1.0)
-    #             )
-    # marker_publisher.publish(marker)
-    # rospy.sleep(1)
-
     markerArray = MarkerArray()
 
-
-    theta_target = 0
-    quat = tf.transformations.quaternion_from_euler(0, 0, theta_target)
-
+    # # mark map origin
+    # origin_marker = Marker()
+    # origin_marker.id = 0
+    # origin_marker.header.frame_id = "/map"
+    # origin_marker.type = origin_marker.SPHERE
+    # origin_marker.action = origin_marker.ADD
+    # origin_marker.lifetime = rospy.Duration(10.0)
+    # origin_marker.scale.x = 0.2
+    # origin_marker.scale.y = 0.2
+    # origin_marker.scale.z = 0.2
+    # origin_marker.color.a = 1.0
+    # origin_marker.color.r = 0.0
+    # origin_marker.color.g = 0.0
+    # origin_marker.color.b = 1.0
+    # origin_marker.pose.position.x = 0.0
+    # origin_marker.pose.position.y = 1.0
+    # markerArray.markers.append(origin_marker)
 
     for i in range(len(candidates)):
 
         marker = Marker()
-        marker.id = i
+        marker.id = i + 1
         marker.header.frame_id = "/map"
         marker.type = marker.SPHERE
         marker.action = marker.ADD
-        marker.lifetime = rospy.Duration(5.0)
-
-        marker.scale.x = 0.2
-        marker.scale.y = 0.2
-        marker.scale.z = 0.2
-
+        marker.lifetime = rospy.Duration(10.0)
+        marker.scale.x = 0.1
+        marker.scale.y = 0.1
+        marker.scale.z = 0.1
         marker.color.a = 1.0
         marker.color.r = 1.0
         marker.color.g = 1.0
@@ -302,12 +300,6 @@ def show_text_in_rviz(candidates):
 
         marker.pose.position.x = candidates[i][1]
         marker.pose.position.y = candidates[i][0]
-
-        marker.pose.orientation.x = quat[0]
-        marker.pose.orientation.y = quat[1]
-        marker.pose.orientation.z = quat[2]
-        marker.pose.orientation.w = quat[3]
-
         markerArray.markers.append(marker)
 
     # Publish the MarkerArray
@@ -318,8 +310,7 @@ def show_text_in_rviz(candidates):
 def shutdown():
     # stop turtlebot
     rospy.loginfo("Stop TurtleBot")
-    # a default Twist has linear.x of 0 and angular.z of 0.  So it'll stop TurtleBot
-    update_rate.sleep()
+    rospy.sleep(1)
 
 
 
@@ -333,7 +324,7 @@ rospy.Subscriber('/map', OccupancyGrid, callback_map)
 rospy.Subscriber('/odom', Odometry)
 
 # publish frontier markers rviz
-publisher = rospy.Publisher('visualization_marker_array', MarkerArray)
+publisher = rospy.Publisher('visualization_marker_array', MarkerArray, queue_size=10)
 
 # initialyze listener
 tflistener = tf.TransformListener()
@@ -348,12 +339,8 @@ rospy.loginfo("To stop TurtleBot CTRL + C")
 # what function to call when you ctrl + c
 rospy.on_shutdown(shutdown)
 
-# Define updare rate to 10 HZ
-update_rate = rospy.Rate(10);
-
+# set start flag to false -- wait until map is published
 start_flag = False
-
-rospy.sleep(10)
 
 while not rospy.is_shutdown():
     if start_flag:
@@ -368,6 +355,6 @@ while not rospy.is_shutdown():
 
         # frontiers_candidates_map = get_frontier_candidates()
         # goal = select_frontier(frontiers_candidates_map)
-        # show_text_in_rviz(marker_publisher, goal)
+        # output_to_rviz(marker_publisher, goal)
 
-        update_rate.sleep()
+        rospy.sleep(1)

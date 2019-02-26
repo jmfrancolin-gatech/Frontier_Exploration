@@ -22,11 +22,14 @@
         <param name="temporalUpdate" value="5.0"/>
         <param name="lskip" value="0.1"/>
 
-        <param name="delta" value="0.01"/>
+        <param name="delta" value="0.1"/>
 
         <param name="maxURange" value="3.0"/>
         <param name="maxRange" value="4.0"/>
         <!-- param name="gazeboLaserRange" value="0.0"/-->
+
+        <param name="minimumScore" value="50.0"/>
+        <param name="occ_thresh" value="0.60"/>
 
         <param name="xmax" value="5.0"/>
         <param name="xmin" value="-5.0"/>
