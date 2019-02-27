@@ -1,2 +1,2 @@
 NavfnROS:
-  allow_unknown: true
+  allow_unknown: false

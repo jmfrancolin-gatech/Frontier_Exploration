@@ -7,7 +7,6 @@ import math
 import numpy as np
 import union_find
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 
 from skimage.measure import find_contours
 from move_base_msgs.msg import MoveBaseGoal, MoveBaseAction
@@ -15,11 +14,8 @@ from nav_msgs.msg import OccupancyGrid, Odometry
 from actionlib_msgs.msg import GoalStatus
 from visualization_msgs.msg import Marker, MarkerArray
 from tf.transformations import quaternion_from_euler
-
 from geometry_msgs.msg import Pose, Point
-# from geometry_msgs.msg import Quaternion, Pose, Point, Vector3
 from std_msgs.msg import Header, ColorRGBA
-
 
 def get_candidates():
 
@@ -31,11 +27,17 @@ def get_candidates():
     global cluster_trashhole
 
     # save current occupancy grid for reliable computations
-    saved_map = map_raw
+    saved_map = np.copy(map_raw)
 
     # compute contours
     contours_negative = find_contours(saved_map, -1.0, fully_connected='high')
     contours_positive = find_contours(saved_map,  1.0, fully_connected='high')
+
+    # wait until Ocuupancy grid output features
+    # temporalUpdate = 30s (max wait time) / see launch file
+    if len(contours_negative) == 0 or len(contours_positive) == 0:
+        rospy.sleep(10)
+        controller()
 
     # translate contours to map frame
     contours_negative = np.concatenate(contours_negative, axis=0)
@@ -48,8 +50,10 @@ def get_candidates():
     # translate contours to map frame
     contours_positive = np.concatenate(contours_positive, axis=0)
     for index in range(len(contours_positive)):
-        contours_positive[index][0] = round(contours_positive[index][0] * map_resolution + map_origin[0], 2)
-        contours_positive[index][1] = round(contours_positive[index][1] * map_resolution + map_origin[1], 2)
+        contours_positive[index][0] = round(contours_positive[index][0]\
+                                    * map_resolution + map_origin[0], 2)
+        contours_positive[index][1] = round(contours_positive[index][1]\
+                                    * map_resolution + map_origin[1], 2)
 
     # convert contour np arrays into sets
     set_negative = set([tuple(x) for x in contours_negative])
@@ -127,6 +131,7 @@ def utility_function(centroids):
 
     # TO-DO:
     # Check if current_position for tf listener is also inverted
+    # Check accuracy of manhattan distance calculation
 
     print 'Inside utility_function()\n'
 
@@ -177,25 +182,36 @@ def rviz_and_graph(candidates, centroids, goal):
     print 'Inside rviz_and_graph()\n'
 
     global rviz_id
+    global graph_id
 
-    # print out graph
-    if rviz_id % 100 == 0:
+    print 'rviz_id = ' + str(rviz_id)
 
+    # print out graph every 200 points and update counters
+    if rviz_id > 1000 or rviz_id == 0:
+
+        # graph candidates
         for i in range(len(candidates)):
             plt.plot(candidates[i][:, 1], candidates[i][:, 0], '.')
 
+        # graph centroids
         plt.plot(centroids[:, 1], centroids[:, 0], 'ro')
-        plt.plot(goal[1], goal[0], 'gX')
+
+        # graph goals
+        plt.plot(goal[:, 1], goal[:, 0], 'gX')
 
         plt.grid(True)
-        plt.savefig('graph_' + str(rviz_id / 100) + '.png')
+        plt.savefig('graph_' + str(graph_id) + '.png')
+
+        graph_id = graph_id + 1
+        rviz_id = 0
 
 
     color = ColorRGBA()
+    dimention = map_resolution * 2
 
     # # candidates
     # scale needs [x, y, z] atributes
-    scale = Point(map_resolution * 2, map_resolution * 4, map_resolution * 4)
+    scale = Point(dimention, dimention, dimention)
     # color nneds [r, g, b, a] atributes
     color = ColorRGBA(0.0, 0.0, 1.0, 0.50)
     # concatenate candidates because output_to_rviz recives a single array
@@ -205,7 +221,7 @@ def rviz_and_graph(candidates, centroids, goal):
 
     # centroids
     # scale needs [x, y, z] atributes
-    scale = Point(map_resolution * 3, map_resolution * 5, map_resolution * 5)
+    scale = Point(dimention, dimention, dimention)
     # color nneds [r, g, b, a] atributes
     color = ColorRGBA(1.0, 1.0, 0.0, 0.75)
     # publish to rviz
@@ -213,7 +229,7 @@ def rviz_and_graph(candidates, centroids, goal):
 
     # goal
     # scale needs [x, y, z] atributes
-    scale = Point(map_resolution * 4, map_resolution * 5, map_resolution * 5)
+    scale = Point(dimention * 2, dimention * 2, dimention * 2)
     # color nneds [r, g, b, a] atributes
     color = ColorRGBA(0.0, 1.0, 0.0, 1.0)
     # publish to rviz
@@ -225,7 +241,8 @@ def get_current_pose(target_frame, source_frame):
     print 'Inside get_current_pose()\n'
 
     # rospy.Time(0) in the context of tf returns the latest available transform
-    position, quaternion = tflistener.lookupTransform(target_frame, source_frame, rospy.Time(0))
+    position, quaternion = tflistener.lookupTransform(
+                            target_frame, source_frame, rospy.Time(0))
     return position, quaternion
 
 
@@ -233,7 +250,6 @@ def callback_map(OccupancyGrid):
 
     print 'Inside callback_map()\n'
 
-    global start_flag
     global map_raw
     global map_origin
     global map_resolution
@@ -246,20 +262,17 @@ def callback_map(OccupancyGrid):
     map_raw = np.array(data)
     map_raw = map_raw.reshape(info.height, info.width)
 
-    # np.savetxt('map_raw.txt', map_raw, fmt = '%d');
+    np.savetxt('map_raw.txt', map_raw, fmt = '%d');
 
     # get initial position
-    map_origin = np.array([info.origin.position.x, info.origin.position.y, info.origin.position.z])
+    map_origin = np.array([info.origin.position.x, info.origin.position.y,\
+                 info.origin.position.z])
 
     # get map resolution
     map_resolution = info.resolution
 
-    # set start_flag to true
-    start_flag = True
-
     # gice time to update the OccupancyGrid
     rospy.sleep(1)
-
 
 def go_to_point(x_target, y_target, theta_target = 0):
     """ Move to a location relative to the indicated frame """
@@ -276,38 +289,13 @@ def go_to_point(x_target, y_target, theta_target = 0):
     #allow TurtleBot up to 60 seconds to complete task
     success = move_base.wait_for_result(rospy.Duration(60))
 
-
+    # if not successfull, cancel goal
     if not success:
         move_base.cancel_goal()
-        rospy.loginfo("The base failed to reach the desired pose")
-    else:
-        # We made it!
-        state = move_base.get_state()
-        if state == GoalStatus.SUCCEEDED:
-            rospy.loginfo("SUCCEEDED")
 
-    # rospy.loginfo("Waiting for server.")
-    # action.wait_for_server()
-
-    # rospy.loginfo("Sending goal.")
-    # action.send_goal(goal)
-    # rospy.loginfo("Goal Sent.")
-
-    # # Check in after a while to see how things are going.
-    # rospy.sleep(1)
-    # rospy.loginfo("Status Text: {}".format(action.get_goal_status_text()))
-
-    # # Should be either "ACTIVE", "SUCCEEDED" or "ABORTED"
-    # state_name = actionlib.get_name_of_constant(GoalStatus, action.get_state())
-    # rospy.loginfo("State      : {}".format(state_name))
-
-    # # Wait until the server reports a result.
-    # action.wait_for_result()
-    # rospy.loginfo("Status Text: {}".format(action.get_goal_status_text()))
-
-    # # Should be either "SUCCEEDED" or "ABORTED"
-    # state_name = actionlib.get_name_of_constant(GoalStatus, action.get_state())
-    # rospy.loginfo("State      : {}".format(state_name))
+    # output status
+    state = move_base.get_state()
+    rospy.loginfo("State      : {}".format(state))
 
 def create_goal_message(x_target, y_target, theta_target, frame = '/map'):
     """Create a goal message in the indicated frame"""
@@ -347,7 +335,7 @@ def output_to_rviz(array, scale, color):
         marker.header.frame_id = "/map"
         marker.type = marker.SPHERE
         marker.action = marker.ADD
-        marker.lifetime = rospy.Duration(10.0)
+        marker.lifetime = rospy.Duration(120.0)
         marker.scale = scale
         marker.color = color
         # x and y are inverted due to nature of the map
@@ -368,8 +356,25 @@ def shutdown():
     rospy.loginfo("Stop TurtleBot")
     rospy.sleep(1)
 
+def controller():
 
-## Main ########################################################################
+    while not rospy.is_shutdown():
+
+        print 'Inside controller()\n'
+
+        candidates = get_candidates()
+        centroids = compute_centroids(candidates)
+        goal = utility_function(centroids)
+        rviz_and_graph(candidates, centroids, goal)
+
+        # x and y are inverted due to confliction frames
+        # of recerence from Occupancy grid & /map
+
+        for index in range(len(goal)):
+            go_to_point(goal[index][1], goal[index][0])
+            rospy.sleep(1)
+
+## Init ########################################################################
 
 # set priting options
 np.set_printoptions(suppress=True)
@@ -397,28 +402,13 @@ rospy.loginfo("To stop TurtleBot CTRL + C")
 # what function to call when you ctrl + c
 rospy.on_shutdown(shutdown)
 
-# set start flag to false -- wait until map is published
-rospy.sleep(5)
-start_flag = True
+rospy.sleep(10)
 
 # initialyze counter to give a unique id for rviz features
 rviz_id = 0
+graph_id = 0
 # parameters dependent on map_resolution & necessary to cluster points
-cluster_trashhole = 0.02
+cluster_trashhole = 0.1
 
-
-while not rospy.is_shutdown():
-    if start_flag:
-
-        print 'Inside main()\n'
-
-        candidates = get_candidates()
-        centroids = compute_centroids(candidates)
-        goal = utility_function(centroids)
-        rviz_and_graph(candidates, centroids, goal)
-
-        # x and y are inverted due to confliction frames
-        # of recerence from Occupancy grid & /map
-        for index in range(len(goal)):
-            go_to_point(goal[index][1], goal[index][0])
-            rospy.sleep(1)
+# call controller
+controller()
