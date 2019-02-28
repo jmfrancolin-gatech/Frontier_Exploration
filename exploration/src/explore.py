@@ -17,9 +17,9 @@ from tf.transformations import quaternion_from_euler
 from geometry_msgs.msg import Pose, Point
 from std_msgs.msg import Header, ColorRGBA
 
-def get_candidates():
+def get_frontiers():
 
-    print 'Inside get_candidates()\n'
+    print 'Inside get_frontiers()'
 
     global map_raw
     global map_origin
@@ -59,22 +59,22 @@ def get_candidates():
     set_negative = set([tuple(x) for x in contours_negative])
     set_positive = set([tuple(x) for x in contours_positive])
 
-    # perform set difference operation to find frontiers
-    frontier = set_negative.difference(set_positive)
+    # perform set difference operation to find candidates
+    candidates = set_negative.difference(set_positive)
 
     # convert set of frotiers into a list (hasable type data structre)
-    frontier = [x for x in frontier]
+    candidates = [x for x in candidates]
 
-    # group frontier points into clusters based on distance
-    frontier = groupTPL(frontier, cluster_trashhole)
+    # group candidates points into clusters based on distance
+    candidates = groupTPL(candidates, cluster_trashhole)
 
     # make list of np arrays of clustered frontier points
-    candidates = []
-    for i in range(len(frontier)):
-        candidates.append(np.array(frontier[i]))
+    frontiers = []
+    for i in range(len(candidates)):
+        frontiers.append(np.array(candidates[i]))
 
-    # return candidates as np array of np arays
-    return candidates
+    # return frontiers as list of np arays
+    return frontiers
 
 def groupTPL(TPL, distance=1):
 
@@ -83,7 +83,7 @@ def groupTPL(TPL, distance=1):
     # K-d tree may be an alternative
     # Currently algorithm runs on O(n^2)
 
-    print 'Inside groupTPL()\n'
+    print 'Inside groupTPL()'
 
     U = union_find.UnionFind()
 
@@ -103,7 +103,7 @@ def groupTPL(TPL, distance=1):
 
 def compute_centroids(list_of_arrays):
 
-    print 'Inside compute_centroids()\n'
+    print 'Inside compute_centroids()'
 
     global map_resolution
 
@@ -133,7 +133,7 @@ def utility_function(centroids):
     # Check if current_position for tf listener is also inverted
     # Check accuracy of manhattan distance calculation
 
-    print 'Inside utility_function()\n'
+    print 'Inside utility_function()'
 
     # chosen utility function : length / distance
 
@@ -166,20 +166,20 @@ def utility_function(centroids):
     # reverse utility_array to have greatest utility as index 0
     utility_array = utility_array[::-1]
 
-    goal = []
+    goals = []
     for i in range(3):
         coordanate = []
 
         if i < len(utility_array):
             coordanate = [utility_array[i][0], utility_array[i][1]]
-            goal.append(coordanate)
+            goals.append(coordanate)
 
     # return goal as np array
-    return np.array(goal)
+    return np.array(goals)
 
-def rviz_and_graph(candidates, centroids, goal):
+def rviz_and_graph(frontiers, centroids, goals):
 
-    print 'Inside rviz_and_graph()\n'
+    print 'Inside rviz_and_graph()'
 
     global rviz_id
     global graph_id
@@ -189,15 +189,15 @@ def rviz_and_graph(candidates, centroids, goal):
     # print out graph every 200 points and update counters
     if rviz_id > 1000 or rviz_id == 0:
 
-        # graph candidates
-        for i in range(len(candidates)):
-            plt.plot(candidates[i][:, 1], candidates[i][:, 0], '.')
+        # graph frontiers
+        for i in range(len(frontiers)):
+            plt.plot(frontiers[i][:, 1], frontiers[i][:, 0], '.')
 
         # graph centroids
         plt.plot(centroids[:, 1], centroids[:, 0], 'ro')
 
         # graph goals
-        plt.plot(goal[:, 1], goal[:, 0], 'gX')
+        plt.plot(goals[:, 1], goals[:, 0], 'gX')
 
         plt.grid(True)
         plt.savefig('graph_' + str(graph_id) + '.png')
@@ -209,15 +209,15 @@ def rviz_and_graph(candidates, centroids, goal):
     color = ColorRGBA()
     dimention = map_resolution * 2
 
-    # # candidates
+    # # frontiers
     # scale needs [x, y, z] atributes
     scale = Point(dimention, dimention, dimention)
     # color nneds [r, g, b, a] atributes
     color = ColorRGBA(0.0, 0.0, 1.0, 0.50)
-    # concatenate candidates because output_to_rviz recives a single array
-    candidates = np.concatenate(candidates)
+    # concatenate frontiers because output_to_rviz recives a single array
+    frontiers = np.concatenate(frontiers)
     # publish to rviz
-    output_to_rviz(candidates, scale, color)
+    output_to_rviz(frontiers, scale, color)
 
     # centroids
     # scale needs [x, y, z] atributes
@@ -227,18 +227,18 @@ def rviz_and_graph(candidates, centroids, goal):
     # publish to rviz
     output_to_rviz(centroids, scale, color)
 
-    # goal
+    # goals
     # scale needs [x, y, z] atributes
     scale = Point(dimention * 2, dimention * 2, dimention * 2)
     # color nneds [r, g, b, a] atributes
     color = ColorRGBA(0.0, 1.0, 0.0, 1.0)
     # publish to rviz
-    output_to_rviz(goal, scale, color)
+    output_to_rviz(goals, scale, color)
 
 
 def get_current_pose(target_frame, source_frame):
 
-    print 'Inside get_current_pose()\n'
+    print 'Inside get_current_pose()'
 
     # rospy.Time(0) in the context of tf returns the latest available transform
     position, quaternion = tflistener.lookupTransform(
@@ -248,7 +248,7 @@ def get_current_pose(target_frame, source_frame):
 
 def callback_map(OccupancyGrid):
 
-    print 'Inside callback_map()\n'
+    print 'Inside callback_map()'
 
     global map_raw
     global map_origin
@@ -277,7 +277,7 @@ def callback_map(OccupancyGrid):
 def go_to_point(x_target, y_target, theta_target = 0):
     """ Move to a location relative to the indicated frame """
 
-    print 'Inside go_to_point()\n'
+    print 'Inside go_to_point()'
 
     rospy.loginfo("navigating to: ({},{},{})".format(x_target, y_target, theta_target))
 
@@ -300,7 +300,7 @@ def go_to_point(x_target, y_target, theta_target = 0):
 def create_goal_message(x_target, y_target, theta_target, frame = '/map'):
     """Create a goal message in the indicated frame"""
 
-    print 'Inside create_goal_message()\n'
+    print 'Inside create_goal_message()'
 
     quat = tf.transformations.quaternion_from_euler(0, 0, theta_target)
     # Create a goal message ...
@@ -320,7 +320,7 @@ def create_goal_message(x_target, y_target, theta_target, frame = '/map'):
 
 def output_to_rviz(array, scale, color):
 
-    print 'Inside output_to_rviz()\n'
+    print 'Inside output_to_rviz()'
 
     global publisher
     global rviz_id
@@ -350,7 +350,7 @@ def output_to_rviz(array, scale, color):
 
 def shutdown():
 
-    print 'Inside shutdown()\n'
+    print 'Inside shutdown()'
 
     # stop turtlebot
     rospy.loginfo("Stop TurtleBot")
@@ -360,18 +360,18 @@ def controller():
 
     while not rospy.is_shutdown():
 
-        print 'Inside controller()\n'
+        print 'Inside controller()'
 
-        candidates = get_candidates()
-        centroids = compute_centroids(candidates)
-        goal = utility_function(centroids)
-        rviz_and_graph(candidates, centroids, goal)
+        frontiers = get_frontiers()
+        centroids = compute_centroids(frontiers)
+        goals = utility_function(centroids)
+        rviz_and_graph(frontiers, centroids, goals)
 
-        # x and y are inverted due to confliction frames
+        # x and y are inverted due to conflicting frames
         # of recerence from Occupancy grid & /map
 
-        for index in range(len(goal)):
-            go_to_point(goal[index][1], goal[index][0])
+        for goal in goals:
+            go_to_point(goal[1], goal[0])
             rospy.sleep(1)
 
 ## Init ########################################################################
