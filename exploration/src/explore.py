@@ -26,18 +26,20 @@ def get_frontiers():
     global map_resolution
     global cluster_trashhole
 
-    # save current occupancy grid for reliable computations
-    saved_map = np.copy(map_raw)
-
     # compute contours
-    contours_negative = find_contours(saved_map, -1.0, fully_connected='high')
-    contours_positive = find_contours(saved_map,  1.0, fully_connected='high')
-
     # wait until Ocuupancy grid output features
-    # temporalUpdate = 30s (max wait time) / see launch file
-    if len(contours_negative) == 0 or len(contours_positive) == 0:
-        rospy.sleep(10)
-        controller()
+    # temporalUpdate = 30s (max wait time) see launch file
+    while True:
+
+        # save current occupancy grid for reliable computations
+        saved_map = np.copy(map_raw)
+
+        contours_negative = find_contours(saved_map, -1.0, fully_connected='high')
+        contours_positive = find_contours(saved_map,  1.0, fully_connected='high')
+        
+        if len(contours_negative) != 0:
+            break
+        rospy.sleep(5)
 
     # translate contours to map frame
     contours_negative = np.concatenate(contours_negative, axis=0)
@@ -84,7 +86,6 @@ def groupTPL(TPL, distance=1):
     # Currently algorithm runs on O(n^2)
 
     print 'Inside groupTPL()'
-
     U = union_find.UnionFind()
 
     for (i, x) in enumerate(TPL):
@@ -104,7 +105,6 @@ def groupTPL(TPL, distance=1):
 def compute_centroids(list_of_arrays):
 
     print 'Inside compute_centroids()'
-
     global map_resolution
 
     centroids = []
@@ -127,7 +127,7 @@ def compute_centroids(list_of_arrays):
     # return centroids as np array
     return centroids
 
-def utility_function(centroids):
+def utility_function(centroids, turtlebot_goals):
 
     # TO-DO:
     # Check if current_position for tf listener is also inverted
@@ -135,76 +135,88 @@ def utility_function(centroids):
 
     print 'Inside utility_function()'
 
-    # chosen utility function : length / distance
+    # concatenate
+    turtlebot_goals = np.vstack([turtlebot_goals, centroids])
+    turtlebot_goals = np.unique(turtlebot_goals, axis=0)
 
-    # pre allocate utility_array
-    utility_array = np.zeros((centroids.shape[0], centroids.shape[1]))
+    # sort
+    index = np.argsort(turtlebot_goals[:, 2])
+    turtlebot_goals[:] = turtlebot_goals[index]
+    turtlebot_goals = turtlebot_goals[::-1]
 
-    # make a copy of centroids and use for loop to
-    # substitute length atribute with utility of point
-    utility_array = np.copy(centroids)
+    # filter
+    turtlebot_goals = turtlebot_goals[turtlebot_goals[:,2] >= 50]
 
-    # compute current position on the map
-    current_position, current_quaternion = get_current_pose('/map', '/odom')
+    # return
+    return turtlebot_goals
 
-    for index in range(len(centroids)):
+    # # chosen utility function : length / distance
 
-        # compute manhattan distance
-        man_dist = abs(current_position[0] - centroids[index][0])\
-                 + abs(current_position[1] - centroids[index][1])
+    # # pre allocate utility_array
+    # utility_array = np.zeros((centroids.shape[0], centroids.shape[1]))
 
-        # compute length / distance
-        utility = centroids[index][2] / man_dist
+    # # make a copy of centroids and use for loop to
+    # # substitute length atribute with utility of point
+    # utility_array = np.copy(centroids)
 
-        # substitute length atribute with utility of point
-        utility_array[index][2] = utility
+    # # compute current position on the map
+    # current_position, current_quaternion = get_current_pose('/map', '/odom')
 
-    # sort utility_array based on utility
-    index = np.argsort(utility_array[:, 2])
-    utility_array[:] = utility_array[index]
+    # for index in range(len(centroids)):
 
-    # reverse utility_array to have greatest utility as index 0
-    utility_array = utility_array[::-1]
+    #     # compute manhattan distance
+    #     man_dist = abs(current_position[0] - centroids[index][0])\
+    #              + abs(current_position[1] - centroids[index][1])
 
-    goals = []
-    for i in range(3):
-        coordanate = []
+    #     # compute length / distance
+    #     utility = centroids[index][2] / man_dist
 
-        if i < len(utility_array):
-            coordanate = [utility_array[i][0], utility_array[i][1]]
-            goals.append(coordanate)
+    #     # substitute length atribute with utility of point
+    #     utility_array[index][2] = utility
+
+    # # sort utility_array based on utility
+    # index = np.argsort(utility_array[:, 2])
+    # utility_array[:] = utility_array[index]
+
+    # # reverse utility_array to have greatest utility as index 0
+    # utility_array = utility_array[::-1]
+
+    # for i in range(3):
+    #     coordanate = []
+
+    #     if i < len(utility_array):
+    #         coordanate = [utility_array[i][0], utility_array[i][1], ]
+    #         turtlebot_goals = np.vstack([turtlebot_goals, coordanate])
 
     # return goal as np array
-    return np.array(goals)
+    # return np.array(goals)
 
 def rviz_and_graph(frontiers, centroids, goals):
 
     print 'Inside rviz_and_graph()'
 
+    # global graph_id
+
+    # # print out graph every 200 points and update counters
+    # if rviz_id > 1000 or rviz_id == 0:
+
+    #     # graph frontiers
+    #     for i in range(len(frontiers)):
+    #         plt.plot(frontiers[i][:, 1], frontiers[i][:, 0], '.')
+
+    #     # graph centroids
+    #     plt.plot(centroids[:, 1], centroids[:, 0], 'ro')
+
+    #     # graph goals
+    #     plt.plot(goals[:, 1], goals[:, 0], 'gX')
+
+    #     plt.grid(True)
+    #     plt.savefig('graph_' + str(graph_id) + '.png')
+
+    #     graph_id = graph_id + 1
+    #     rviz_id = 0
+
     global rviz_id
-    global graph_id
-
-    print 'rviz_id = ' + str(rviz_id)
-
-    # print out graph every 200 points and update counters
-    if rviz_id > 1000 or rviz_id == 0:
-
-        # graph frontiers
-        for i in range(len(frontiers)):
-            plt.plot(frontiers[i][:, 1], frontiers[i][:, 0], '.')
-
-        # graph centroids
-        plt.plot(centroids[:, 1], centroids[:, 0], 'ro')
-
-        # graph goals
-        plt.plot(goals[:, 1], goals[:, 0], 'gX')
-
-        plt.grid(True)
-        plt.savefig('graph_' + str(graph_id) + '.png')
-
-        graph_id = graph_id + 1
-        rviz_id = 0
-
 
     color = ColorRGBA()
     dimention = map_resolution * 2
@@ -235,7 +247,6 @@ def rviz_and_graph(frontiers, centroids, goals):
     # publish to rviz
     output_to_rviz(goals, scale, color)
 
-
 def get_current_pose(target_frame, source_frame):
 
     print 'Inside get_current_pose()'
@@ -244,7 +255,6 @@ def get_current_pose(target_frame, source_frame):
     position, quaternion = tflistener.lookupTransform(
                             target_frame, source_frame, rospy.Time(0))
     return position, quaternion
-
 
 def callback_map(OccupancyGrid):
 
@@ -287,7 +297,9 @@ def go_to_point(x_target, y_target, theta_target = 0):
     move_base.send_goal(goal)
 
     #allow TurtleBot up to 60 seconds to complete task
-    success = move_base.wait_for_result(rospy.Duration(60))
+    success = move_base.wait_for_result(rospy.Duration(30))
+
+    print success
 
     # if not successfull, cancel goal
     if not success:
@@ -296,6 +308,9 @@ def go_to_point(x_target, y_target, theta_target = 0):
     # output status
     state = move_base.get_state()
     rospy.loginfo("State      : {}".format(state))
+
+    # return boolean type
+    return success
 
 def create_goal_message(x_target, y_target, theta_target, frame = '/map'):
     """Create a goal message in the indicated frame"""
@@ -307,10 +322,10 @@ def create_goal_message(x_target, y_target, theta_target, frame = '/map'):
     goal = MoveBaseGoal()
     goal.target_pose.header.frame_id = frame
     goal.target_pose.header.stamp = rospy.get_rostime()
-
+    # position
     goal.target_pose.pose.position.x = x_target
     goal.target_pose.pose.position.y = y_target
-
+    # orientation
     goal.target_pose.pose.orientation.x = quat[0]
     goal.target_pose.pose.orientation.y = quat[1]
     goal.target_pose.pose.orientation.z = quat[2]
@@ -335,7 +350,7 @@ def output_to_rviz(array, scale, color):
         marker.header.frame_id = "/map"
         marker.type = marker.SPHERE
         marker.action = marker.ADD
-        marker.lifetime = rospy.Duration(120.0)
+        marker.lifetime = rospy.Duration(30.0)
         marker.scale = scale
         marker.color = color
         # x and y are inverted due to nature of the map
@@ -358,21 +373,62 @@ def shutdown():
 
 def controller():
 
+    # initialyze goal queues
+    # [x, y, priority]
+    turtlebot_goals = np.array([np.nan, np.nan, np.nan]);
+    snake_goals = np.array([np.nan, np.nan, np.nan]);
+
     while not rospy.is_shutdown():
 
         print 'Inside controller()'
 
         frontiers = get_frontiers()
         centroids = compute_centroids(frontiers)
-        goals = utility_function(centroids)
-        rviz_and_graph(frontiers, centroids, goals)
+        turtlebot_goals = utility_function(centroids, turtlebot_goals)
 
         # x and y are inverted due to conflicting frames
         # of recerence from Occupancy grid & /map
 
-        for goal in goals:
-            go_to_point(goal[1], goal[0])
-            rospy.sleep(1)
+        # convert contour np arrays into sets
+        set_turtlebot = set([tuple(x) for x in turtlebot_goals])
+        set_snake = set([tuple(x) for x in snake_goals])
+
+        # perform set difference operation to find candidates
+        turtlebot_goals = set_turtlebot.difference(set_snake)
+
+        # convert set back into numpy array
+        turtlebot_goals = [x for x in candidates]
+        turtlebot_goals = np.array(turtlebot_goals);
+
+        if len(turtlebot_goals) > 0:
+
+            print 'navigating to turtlebot_goals'
+
+            rviz_and_graph(frontiers, centroids, [turtlebot_goals[0]])
+            success = go_to_point(turtlebot_goals[0][1], turtlebot_goals[0][0])
+
+            print turtlebot_goals
+            
+            # if can't reach goal, put goal into snake queue
+            if not success:
+                snake_goals = np.vstack([snake_goals, turtlebot_goals[0]])
+                snake_goals = np.unique(snake_goals, axis=0)
+            
+            turtlebot_goals = np.delete(turtlebot_goals, (0), axis=0)
+
+        elif len(snake_goals) > 0:
+
+            print 'navigating to snake_goals'
+
+            rviz_and_graph(frontiers, centroids, [snake_goal])
+            success = go_to_point(snake_goal[i][1], snake_goal[i][0])
+
+        else:
+            shutdown()
+
+        # for goal in goals:
+        #     go_to_point(goal[1], goal[0])
+        #     rospy.sleep(1)
 
 ## Init ########################################################################
 
