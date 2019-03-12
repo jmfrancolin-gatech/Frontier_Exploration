@@ -297,9 +297,7 @@ def go_to_point(x_target, y_target, theta_target = 0):
     move_base.send_goal(goal)
 
     #allow TurtleBot up to 60 seconds to complete task
-    success = move_base.wait_for_result(rospy.Duration(30))
-
-    print success
+    success = move_base.wait_for_result(rospy.Duration(20))
 
     # if not successfull, cancel goal
     if not success:
@@ -350,7 +348,7 @@ def output_to_rviz(array, scale, color):
         marker.header.frame_id = "/map"
         marker.type = marker.SPHERE
         marker.action = marker.ADD
-        marker.lifetime = rospy.Duration(30.0)
+        marker.lifetime = rospy.Duration(20.0)
         marker.scale = scale
         marker.color = color
         # x and y are inverted due to nature of the map
@@ -378,6 +376,10 @@ def controller():
     turtlebot_goals = np.array([np.nan, np.nan, np.nan]);
     snake_goals = np.array([np.nan, np.nan, np.nan]);
 
+    # concatenate
+    snake_goals = np.vstack([snake_goals, snake_goals])
+    snake_goals = np.unique(snake_goals, axis=0)
+
     while not rospy.is_shutdown():
 
         print 'Inside controller()'
@@ -386,28 +388,24 @@ def controller():
         centroids = compute_centroids(frontiers)
         turtlebot_goals = utility_function(centroids, turtlebot_goals)
 
-        # x and y are inverted due to conflicting frames
-        # of recerence from Occupancy grid & /map
-
-        # convert contour np arrays into sets
+        # temporary solution for difference between
+        # turtlebot_goals and snake_goals
         set_turtlebot = set([tuple(x) for x in turtlebot_goals])
         set_snake = set([tuple(x) for x in snake_goals])
-
-        # perform set difference operation to find candidates
         turtlebot_goals = set_turtlebot.difference(set_snake)
-
-        # convert set back into numpy array
-        turtlebot_goals = [x for x in candidates]
+        turtlebot_goals = [x for x in turtlebot_goals]
         turtlebot_goals = np.array(turtlebot_goals);
 
         if len(turtlebot_goals) > 0:
 
+            # x and y are inverted due to conflicting frames
+            # of recerence from Occupancy grid & /map
             print 'navigating to turtlebot_goals'
+            print 'turtlebot_goals: '
+            print turtlebot_goals
 
             rviz_and_graph(frontiers, centroids, [turtlebot_goals[0]])
             success = go_to_point(turtlebot_goals[0][1], turtlebot_goals[0][0])
-
-            print turtlebot_goals
             
             # if can't reach goal, put goal into snake queue
             if not success:
@@ -419,6 +417,8 @@ def controller():
         elif len(snake_goals) > 0:
 
             print 'navigating to snake_goals'
+            print 'snake_goals :'
+            print snake_goals
 
             rviz_and_graph(frontiers, centroids, [snake_goal])
             success = go_to_point(snake_goal[i][1], snake_goal[i][0])
