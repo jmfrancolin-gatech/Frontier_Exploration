@@ -139,13 +139,13 @@ def utility_function(centroids, turtlebot_goals):
     turtlebot_goals = np.vstack([turtlebot_goals, centroids])
     turtlebot_goals = np.unique(turtlebot_goals, axis=0)
 
+    # filter
+    turtlebot_goals = turtlebot_goals[turtlebot_goals[:,2] >= 50]
+
     # sort
     index = np.argsort(turtlebot_goals[:, 2])
     turtlebot_goals[:] = turtlebot_goals[index]
     turtlebot_goals = turtlebot_goals[::-1]
-
-    # filter
-    turtlebot_goals = turtlebot_goals[turtlebot_goals[:,2] >= 40]
 
     # return
     return turtlebot_goals
@@ -329,41 +329,47 @@ def controller():
 
             turtlebot_goals = utility_function(centroids, turtlebot_goals)
 
-            if len(turtlebot_goals) == 1:
-                current_position, current_quaternion = get_current_pose('/map', '/odom')
-                roll, pitch, yaw = tf.transformations.euler_from_quaternion(current_quaternion)
-                
-                print 'trying to turn'
-                print 'current angle: ' + str(yaw)
-                go_to_point(current_position[1], current_position[0], yaw+3.14)
+            for i in range(3):
 
-                frontiers = get_frontiers()
-                centroids = compute_centroids(frontiers)
-                turtlebot_goals = utility_function(centroids, turtlebot_goals)
+                if len(turtlebot_goals) == 1:
+                    current_position, current_quaternion = get_current_pose('/map', '/odom')
+                    roll, pitch, yaw = tf.transformations.euler_from_quaternion(current_quaternion)
+                    
+                    print 'trying to turn'
+                    print 'current angle: ' + str(yaw)
+                    go_to_point(current_position[1], current_position[0], yaw+3.0)
+                    go_to_point(current_position[1], current_position[0], yaw+3.0)
 
-            # temporary solution for difference between
-            # turtlebot_goals and snake_goals
-            set_turtlebot = set([tuple(x) for x in turtlebot_goals])
-            set_snake = set([tuple(x) for x in snake_goals])
-            turtlebot_goals = set_turtlebot.difference(set_snake)
-            turtlebot_goals = [x for x in turtlebot_goals]
-            turtlebot_goals = np.array(turtlebot_goals);
+                    frontiers = get_frontiers()
+                    centroids = compute_centroids(frontiers)
+                    turtlebot_goals = utility_function(centroids, turtlebot_goals)
 
-            # x and y are inverted due to conflicting frames
-            # of recerence from Occupancy grid & /map
-            print 'turtlebot_goals: '
-            print turtlebot_goals
+                # temporary solution for difference between
+                # turtlebot_goals and snake_goals
+                set_turtlebot = set([tuple(x) for x in turtlebot_goals])
+                set_snake = set([tuple(x) for x in snake_goals])
+                turtlebot_goals = set_turtlebot.difference(set_snake)
+                turtlebot_goals = [x for x in turtlebot_goals]
+                turtlebot_goals = np.array(turtlebot_goals);
 
-            print 'navigating to turtlebot_goals'
-            rviz_and_graph(frontiers, centroids, [turtlebot_goals[0]])
-            success = go_to_point(turtlebot_goals[0][1], turtlebot_goals[0][0])
-            
-            # if can't reach goal, put goal into snake queue
-            if not success:
-                snake_goals = np.vstack([snake_goals, turtlebot_goals[0]])
-                snake_goals = np.unique(snake_goals, axis=0)
-            
-            turtlebot_goals = np.delete(turtlebot_goals, (0), axis=0)
+                # x and y are inverted due to conflicting frames
+                # of recerence from Occupancy grid & /map
+                print 'turtlebot_goals: '
+                print turtlebot_goals
+                print len(turtlebot_goals)
+
+                if i < len(turtlebot_goals):
+
+                    print 'navigating to turtlebot_goals'
+                    rviz_and_graph(frontiers, centroids, [turtlebot_goals[i]])
+                    success = go_to_point(turtlebot_goals[i][1], turtlebot_goals[i][0])
+                    
+                    # if can't reach goal, put goal into snake queue
+                    if not success:
+                        snake_goals = np.vstack([snake_goals, turtlebot_goals[0]])
+                        snake_goals = np.unique(snake_goals, axis=0)
+                    
+                    turtlebot_goals = np.delete(turtlebot_goals, (i), axis=0)
 
         elif len(snake_goals) > 0:
 
