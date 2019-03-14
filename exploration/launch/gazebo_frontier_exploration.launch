@@ -11,15 +11,15 @@
 
     <param name="maxURange" value="3.0"/>
     <param name="maxRange" value="4.0"/>
-    <!-- param name="gazeboLaserRange" value="0.0"/-->
+    <param name="gazeboLaserRange" value="4.0"/>
 
-    <param name="minimumScore" value="50.0"/>
-    <param name="occ_thresh" value="0.60"/>
+    <param name="minimumScore" value="200.0"/>
+    <param name="occ_thresh" value="0.70"/>
 
-    <param name="xmax" value="5.0"/>
-    <param name="xmin" value="-5.0"/>
-    <param name="ymax" value="5.0"/>
-    <param name="ymin" value="-5.0"/>
+    <param name="xmax" value="100.0"/>
+    <param name="xmin" value="-100.0"/>
+    <param name="ymax" value="100.0"/>
+    <param name="ymin" value="-100.0"/>
 </node>
 
 <!-- Run the map server with a blank map -->

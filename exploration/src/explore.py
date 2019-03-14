@@ -13,7 +13,7 @@ from move_base_msgs.msg import MoveBaseGoal, MoveBaseAction
 from nav_msgs.msg import OccupancyGrid, Odometry
 from actionlib_msgs.msg import GoalStatus
 from visualization_msgs.msg import Marker, MarkerArray
-from tf.transformations import quaternion_from_euler
+from tf.transformations import quaternion_from_euler, euler_from_quaternion
 from geometry_msgs.msg import Pose, Point
 from std_msgs.msg import Header, ColorRGBA
 
@@ -145,76 +145,14 @@ def utility_function(centroids, turtlebot_goals):
     turtlebot_goals = turtlebot_goals[::-1]
 
     # filter
-    turtlebot_goals = turtlebot_goals[turtlebot_goals[:,2] >= 50]
+    turtlebot_goals = turtlebot_goals[turtlebot_goals[:,2] >= 40]
 
     # return
     return turtlebot_goals
 
-    # # chosen utility function : length / distance
-
-    # # pre allocate utility_array
-    # utility_array = np.zeros((centroids.shape[0], centroids.shape[1]))
-
-    # # make a copy of centroids and use for loop to
-    # # substitute length atribute with utility of point
-    # utility_array = np.copy(centroids)
-
-    # # compute current position on the map
-    # current_position, current_quaternion = get_current_pose('/map', '/odom')
-
-    # for index in range(len(centroids)):
-
-    #     # compute manhattan distance
-    #     man_dist = abs(current_position[0] - centroids[index][0])\
-    #              + abs(current_position[1] - centroids[index][1])
-
-    #     # compute length / distance
-    #     utility = centroids[index][2] / man_dist
-
-    #     # substitute length atribute with utility of point
-    #     utility_array[index][2] = utility
-
-    # # sort utility_array based on utility
-    # index = np.argsort(utility_array[:, 2])
-    # utility_array[:] = utility_array[index]
-
-    # # reverse utility_array to have greatest utility as index 0
-    # utility_array = utility_array[::-1]
-
-    # for i in range(3):
-    #     coordanate = []
-
-    #     if i < len(utility_array):
-    #         coordanate = [utility_array[i][0], utility_array[i][1], ]
-    #         turtlebot_goals = np.vstack([turtlebot_goals, coordanate])
-
-    # return goal as np array
-    # return np.array(goals)
-
 def rviz_and_graph(frontiers, centroids, goals):
 
     print 'Inside rviz_and_graph()'
-
-    # global graph_id
-
-    # # print out graph every 200 points and update counters
-    # if rviz_id > 1000 or rviz_id == 0:
-
-    #     # graph frontiers
-    #     for i in range(len(frontiers)):
-    #         plt.plot(frontiers[i][:, 1], frontiers[i][:, 0], '.')
-
-    #     # graph centroids
-    #     plt.plot(centroids[:, 1], centroids[:, 0], 'ro')
-
-    #     # graph goals
-    #     plt.plot(goals[:, 1], goals[:, 0], 'gX')
-
-    #     plt.grid(True)
-    #     plt.savefig('graph_' + str(graph_id) + '.png')
-
-    #     graph_id = graph_id + 1
-    #     rviz_id = 0
 
     global rviz_id
 
@@ -386,24 +324,37 @@ def controller():
 
         frontiers = get_frontiers()
         centroids = compute_centroids(frontiers)
-        turtlebot_goals = utility_function(centroids, turtlebot_goals)
-
-        # temporary solution for difference between
-        # turtlebot_goals and snake_goals
-        set_turtlebot = set([tuple(x) for x in turtlebot_goals])
-        set_snake = set([tuple(x) for x in snake_goals])
-        turtlebot_goals = set_turtlebot.difference(set_snake)
-        turtlebot_goals = [x for x in turtlebot_goals]
-        turtlebot_goals = np.array(turtlebot_goals);
 
         if len(turtlebot_goals) > 0:
 
+            turtlebot_goals = utility_function(centroids, turtlebot_goals)
+
+            if len(turtlebot_goals) == 1:
+                current_position, current_quaternion = get_current_pose('/map', '/odom')
+                roll, pitch, yaw = tf.transformations.euler_from_quaternion(current_quaternion)
+                
+                print 'trying to turn'
+                print 'current angle: ' + str(yaw)
+                go_to_point(current_position[1], current_position[0], yaw+3.14)
+
+                frontiers = get_frontiers()
+                centroids = compute_centroids(frontiers)
+                turtlebot_goals = utility_function(centroids, turtlebot_goals)
+
+            # temporary solution for difference between
+            # turtlebot_goals and snake_goals
+            set_turtlebot = set([tuple(x) for x in turtlebot_goals])
+            set_snake = set([tuple(x) for x in snake_goals])
+            turtlebot_goals = set_turtlebot.difference(set_snake)
+            turtlebot_goals = [x for x in turtlebot_goals]
+            turtlebot_goals = np.array(turtlebot_goals);
+
             # x and y are inverted due to conflicting frames
             # of recerence from Occupancy grid & /map
-            print 'navigating to turtlebot_goals'
             print 'turtlebot_goals: '
             print turtlebot_goals
 
+            print 'navigating to turtlebot_goals'
             rviz_and_graph(frontiers, centroids, [turtlebot_goals[0]])
             success = go_to_point(turtlebot_goals[0][1], turtlebot_goals[0][0])
             
@@ -416,15 +367,34 @@ def controller():
 
         elif len(snake_goals) > 0:
 
-            print 'navigating to snake_goals'
-            print 'snake_goals :'
+            # filter
+            snake_goals = snake_goals[snake_goals[:,2] >= 10]
+
+            # sort
+            index = np.argsort(snake_goals[:, 2])
+            snake_goals[:] = snake_goals[index]
+            snake_goals = snake_goals[::-1]
+
+            print 'snake_goals:'
             print snake_goals
 
-            rviz_and_graph(frontiers, centroids, [snake_goal])
-            success = go_to_point(snake_goal[i][1], snake_goal[i][0])
+            for snake_goal in snake_goals:
 
-        else:
-            shutdown()
+                print 'navigating to snake_goals'
+                print 'snake_goals :'
+                print snake_goals
+
+                rviz_and_graph(frontiers, centroids, [snake_goal])
+                success = go_to_point(snake_goal[1], snake_goal[0])
+
+                # implemment check if still frontier
+
+                if success:
+                    snake_goals = np.delete(snake_goals, (0), axis=0)
+
+
+        np.savetxt('snake_goals.txt', snake_goals, fmt = '%.2f');
+        np.savetxt('turtlebot_goals.txt', turtlebot_goals, fmt = '%.2f');
 
         # for goal in goals:
         #     go_to_point(goal[1], goal[0])
