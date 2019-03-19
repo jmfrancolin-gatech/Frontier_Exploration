@@ -8,6 +8,10 @@ import numpy as np
 import union_find
 import matplotlib.pyplot as plt
 
+from std_srvs.srv import Empty
+from nav_msgs.srv import GetPlan
+from geometry_msgs.msg import PoseStamped, Quaternion
+
 from skimage.measure import find_contours
 from move_base_msgs.msg import MoveBaseGoal, MoveBaseAction
 from nav_msgs.msg import OccupancyGrid, Odometry
@@ -140,7 +144,7 @@ def utility_function(centroids, turtlebot_goals):
     turtlebot_goals = np.unique(turtlebot_goals, axis=0)
 
     # filter
-    turtlebot_goals = turtlebot_goals[turtlebot_goals[:,2] >= 50]
+    turtlebot_goals = turtlebot_goals[turtlebot_goals[:,2] > 50]
 
     # sort
     index = np.argsort(turtlebot_goals[:, 2])
@@ -234,12 +238,13 @@ def go_to_point(x_target, y_target, theta_target = 0):
     #start moving
     move_base.send_goal(goal)
 
-    #allow TurtleBot up to 60 seconds to complete task
+    #allow TurtleBot up to 30 seconds to complete task
     success = move_base.wait_for_result(rospy.Duration(20))
 
     # if not successfull, cancel goal
     if not success:
         move_base.cancel_goal()
+        rospy.sleep(1)
 
     # output status
     state = move_base.get_state()
@@ -286,7 +291,7 @@ def output_to_rviz(array, scale, color):
         marker.header.frame_id = "/map"
         marker.type = marker.SPHERE
         marker.action = marker.ADD
-        marker.lifetime = rospy.Duration(20.0)
+        marker.lifetime = rospy.Duration(30.0)
         marker.scale = scale
         marker.color = color
         # x and y are inverted due to nature of the map
@@ -309,6 +314,8 @@ def shutdown():
 
 def controller():
 
+    global clear_costmaps
+
     # initialyze goal queues
     # [x, y, priority]
     turtlebot_goals = np.array([np.nan, np.nan, np.nan]);
@@ -317,6 +324,8 @@ def controller():
     # concatenate
     snake_goals = np.vstack([snake_goals, snake_goals])
     snake_goals = np.unique(snake_goals, axis=0)
+
+    #rospy.set_param('/move_base/DWAPlannerROS/xy_goal_tolerance', 0.1)
 
     while not rospy.is_shutdown():
 
@@ -337,8 +346,9 @@ def controller():
                     
                     print 'trying to turn'
                     print 'current angle: ' + str(yaw)
-                    go_to_point(current_position[1], current_position[0], yaw+3.0)
-                    go_to_point(current_position[1], current_position[0], yaw+3.0)
+                    go_to_point(current_position[1], current_position[0], yaw+3.14)
+                    rospy.sleep(1)
+                    go_to_point(current_position[1], current_position[0], yaw+3.14)
 
                     frontiers = get_frontiers()
                     centroids = compute_centroids(frontiers)
@@ -360,8 +370,48 @@ def controller():
 
                 if i < len(turtlebot_goals):
 
+                    quat = tf.transformations.quaternion_from_euler(0, 0, 0)
+                    current_position, current_quaternion = get_current_pose('/map', '/odom')
+            
+
+                    start = PoseStamped()
+                    start.header.frame_id = "map"
+                    start_point = Point(current_position[1], current_position[0],0)                    
+                    start_orientation = Quaternion(quat[0],quat[1],quat[2],quat[3])
+                    start_pose = Pose(start_point, start_orientation)
+                    start.pose = start_pose
+
+                    #print 'start:'
+                    #print start
+
+                    goal = PoseStamped()
+                    goal.header.frame_id = "map"
+                    goal_point = Point(turtlebot_goals[i][1], turtlebot_goals[i][0],0)
+                    goal_orientation = Quaternion(quat[0],quat[1],quat[2],quat[3])
+                    goal_pose = Pose(goal_point, goal_orientation)
+                    goal.pose = goal_pose
+
+                    #print 'goal:'
+                    #print goal
+
+                    tolerance = 0.1
+
+                    make_plan.wait_for_service()
+                    state = move_base.get_state()
+                    rospy.loginfo("State      : {}".format(state))
+
+                    while state == 0 or state == 1:
+                        rospy.sleep(1)
+                        state = move_base.get_state()
+
+                    plan_response = make_plan(start = start, goal = goal, tolerance = tolerance)
+                    #print 'plan:'
+                    #print plan_response.plan.poses
+
+
                     print 'navigating to turtlebot_goals'
                     rviz_and_graph(frontiers, centroids, [turtlebot_goals[i]])
+                    
                     success = go_to_point(turtlebot_goals[i][1], turtlebot_goals[i][0])
                     
                     # if can't reach goal, put goal into snake queue
@@ -373,8 +423,19 @@ def controller():
 
         elif len(snake_goals) > 0:
 
+            # clear_costmaps = rospy.ServiceProxy('clear_costmaps', Empty)
+            # rospy.wait_for_service('clear_costmaps')
+            # clear_costmaps (std_srvs/Empty)
+
+            clear_costmaps()
+
+            # override xy_goal_tolerance
+            rospy.set_param('/move_base/DWAPlannerROS/xy_goal_tolerance', 0.1)
+            rospy.set_param('/move_base/global_costmap/robot_radius', 0.2)
+            rospy.set_param('/move_base/local_costmap/inflation_layer/inflation_radius' , 0.1)
+
             # filter
-            snake_goals = snake_goals[snake_goals[:,2] >= 10]
+            snake_goals = snake_goals[snake_goals[:,2] > 50]
 
             # sort
             index = np.argsort(snake_goals[:, 2])
@@ -390,13 +451,82 @@ def controller():
                 print 'snake_goals :'
                 print snake_goals
 
-                rviz_and_graph(frontiers, centroids, [snake_goal])
-                success = go_to_point(snake_goal[1], snake_goal[0])
+                quat = tf.transformations.quaternion_from_euler(0, 0, 0)
+                current_position, current_quaternion = get_current_pose('/map', '/odom')
+        
 
-                # implemment check if still frontier
+                start = PoseStamped()
+                start.header.frame_id = "map"
+                start_point = Point(current_position[1], current_position[0],0)                    
+                start_orientation = Quaternion(quat[0],quat[1],quat[2],quat[3])
+                start_pose = Pose(start_point, start_orientation)
+                start.pose = start_pose
 
-                if success:
-                    snake_goals = np.delete(snake_goals, (0), axis=0)
+                #print 'start:'
+                #print start
+
+                goal = PoseStamped()
+                goal.header.frame_id = "map"
+                goal_point = Point(snake_goal[1], snake_goal[0],0)
+                goal_orientation = Quaternion(quat[0],quat[1],quat[2],quat[3])
+                goal_pose = Pose(goal_point, goal_orientation)
+                goal.pose = goal_pose
+
+                #print 'goal:'
+                #print goal
+
+                tolerance = 0.1
+
+                make_plan.wait_for_service()
+                state = move_base.get_state()
+                rospy.loginfo("State      : {}".format(state))
+
+                while state == 0 or state == 1:
+                    rospy.sleep(1)
+                    state = move_base.get_state()
+
+                plan_response = make_plan(start = start, goal = goal, tolerance = tolerance)
+                #print 'plan:'
+                #print plan_response.plan.poses
+                snake_plan = plan_response.plan.poses
+
+                success = False
+                while len(snake_plan) > 0 and not success:
+
+                    goal = MoveBaseGoal()
+                    goal_pose_stamped = snake_plan[-1]
+
+                    goal.target_pose.header.frame_id = '/map'
+                    goal.target_pose.header.stamp = rospy.get_rostime()
+                    goal.target_pose.pose = goal_pose_stamped.pose
+                    move_base.send_goal(goal)
+
+                    #allow TurtleBot up to 30 seconds to complete task
+                    success = move_base.wait_for_result(rospy.Duration(20))
+
+                    # if not successfull, cancel goal
+                    if not success:
+                        move_base.cancel_goal()
+                        rospy.sleep(1)
+                        snake_plan = snake_plan[0:len(snake_plan)-10]
+
+                    if success:
+                        print 'SUCCESS!'
+                        rospy.sleep(20)
+
+
+                rospy.sleep(5)
+
+                #rviz_and_graph(frontiers, centroids, [snake_goal])
+                #success = go_to_point(snake_goal[1], snake_goal[0])
+
+                # # implemment check if still frontier
+
+                # if success:
+                #     snake_goals = np.delete(snake_goals, (0), axis=0)
+        else:
+            shutdown()
+
 
 
         np.savetxt('snake_goals.txt', snake_goals, fmt = '%.2f');
@@ -441,6 +571,18 @@ rviz_id = 0
 graph_id = 0
 # parameters dependent on map_resolution & necessary to cluster points
 cluster_trashhole = 0.1
+
+
+###
+clear_costmaps = rospy.ServiceProxy('move_base/clear_costmaps', Empty)
+
+make_plan = rospy.ServiceProxy('move_base/make_plan', GetPlan)
+make_plan.wait_for_service()
+
+
+# clear_costmaps = rospy.ServiceProxy('clear_costmaps', Empty)
+# # rospy.wait_for_service('clear_costmaps')
+# clear_costmaps (Empty) 
 
 # call controller
 controller()

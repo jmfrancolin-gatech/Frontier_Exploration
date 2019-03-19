@@ -20,7 +20,7 @@
         <param name="angularUpdate" value="0.1"/>
         <param name="linearUpdate" value="0.1"/>
         <param name="temporalUpdate" value="30.0"/>
-        <param name="lskip" value="0.1"/>
+        <param name="lskip" value="0.0"/>
 
         <param name="delta" value="0.02"/>
 
@@ -29,7 +29,7 @@
         <!-- param name="gazeboLaserRange" value="0.0"/-->
 
         <param name="minimumScore" value="100.0"/>
-        <param name="occ_thresh" value="0.10"/>
+        <param name="occ_thresh" value="0.15"/>
 
         <param name="xmax" value="10.0"/>
         <param name="xmin" value="-10.0"/>
@@ -50,6 +50,8 @@
         <rosparam file="$(find exploration)/param/local_costmap_params.yaml" command="load"/>
         <rosparam file="$(find exploration)/param/global_costmap_params.yaml" command="load"/>
         <rosparam file="$(find exploration)/param/base_local_planner_params.yaml" command="load"/>
+
+        <param name="allow_unknown" value="false"/>
 
     </include>
 
